@@ -1,22 +1,10 @@
 name = "game"
+main = "worker.js"
 compatibility_date = "2026-11-19"
 
 [assets]
 directory = "./"
-[[durable_objects.bindings]]
-name = "GAME_ROOM"          # Tên biến, sẽ dùng trong mã là env.GAME_ROOM
-class_name = "GameRoom"     # Tên lớp Durable Object, phải khớp với mã
 
-# Phần này khai báo lớp Durable Object mới
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["GameRoom"]
-name = "game"
-main = "worker.js"   # Trỏ đến tệp mã nguồn bạn đã tạo
-compatibility_date = "2026-11-19"
-
-[assets]
-directory = "./" 
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
 class_name = "GameRoom"
