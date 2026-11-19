@@ -6,22 +6,25 @@ export class GameRoom extends DurableObject {
   }
 
   async fetch(request) {
+    // 1. Kiểm tra header Upgrade
     const upgradeHeader = request.headers.get('Upgrade');
     if (!upgradeHeader || upgradeHeader !== 'websocket') {
       return new Response('Expected Upgrade: websocket', { status: 426 });
     }
 
+    // 2. Tạo cặp WebSocket
     const webSocketPair = new WebSocketPair();
     const [client, server] = Object.values(webSocketPair);
 
+    // 3. Chấp nhận kết nối (Bắt buộc phải có)
     server.accept();
 
-    // Xử lý tin nhắn từ client
+    // 4. Xử lý tin nhắn (Echo lại để test)
     server.addEventListener('message', event => {
-      // Gửi lại tin nhắn cho client (echo) để test kết nối
       server.send(`Server nhận được: ${event.data}`);
     });
 
+    // 5. Trả về Response 101 để hoàn tất handshake
     return new Response(null, {
       status: 101,
       webSocket: client,
