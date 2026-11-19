@@ -11,3 +11,9 @@ class_name = "GameRoom"     # Tên lớp Durable Object, phải khớp với mã
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GameRoom"]
+ame = "game"
+main = "worker.js"   # Trỏ đến tệp mã nguồn bạn đã tạo
+compatibility_date = "2026-11-19"
+
+[assets]
+directory = "./" 
