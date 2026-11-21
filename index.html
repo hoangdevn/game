@@ -1313,7 +1313,7 @@
             </div>
 
             <!-- END OF ROUND / CURTAIN CALL MODAL -->
-            <div id="victoryModal" class="hidden absolute inset-0 bg-black/75 backdrop-blur-xs z-20 flex flex-col items-center justify-center p-4 text-center">
+            <div id="victoryModal" class="hidden absolute inset-0 bg-black/75 backdrop-blur-xs z-30 flex flex-col items-center justify-center p-4 text-center">
                 <div class="lacquer-panel px-8 py-6 rounded-xl max-w-lg w-full border-4 border-amber-500">
                     <div id="victoryBadge" class="text-xs uppercase tracking-widest text-amber-400 font-bold mb-1">TRẬN ĐẤU KẾT THÚC</div>
                     <h3 id="victoryTitle" class="font-traditional text-2xl sm:text-4xl font-black text-amber-300 drop-shadow mb-2">
@@ -2967,44 +2967,79 @@
             }
 
             endMatch(winner, isCurtainCall = false, fromRemoteSync = false) {
-                // In Online Mode, Host is authoritative for finishing the match
-                if (this.aiMode === 'online' && this.online.role === 'guest' && !fromRemoteSync) {
-                    return;
+              endMatch(winner, isCurtainCall = false, fromRemoteSync = false) {
+    // Tránh gọi lặp lại nếu trận đã kết thúc và bảng kết quả đã mở
+    if (!this.matchActive && !this.curtainCallState.active) return;
+
+    // Phòng trường hợp winner bị thiếu
+    const resolvedWinner = (winner && winner.config)
+        ? winner
+        : (this.p1.hp >= this.p2.hp ? this.p1 : this.p2);
+
+    // Ở chế độ Online: nếu Guest thấy máu về 0 trước, chờ tối đa 0.8s cho Host báo; nếu Host không báo thì tự kết thúc tránh đơ
+    if (this.aiMode === 'online' && this.online.role === 'guest' && !fromRemoteSync) {
+        if (!this.online._guestEndTimer) {
+            this.online._guestEndTimer = setTimeout(() => {
+                this.online._guestEndTimer = null;
+                if (this.matchActive) {
+                    this.endMatch(resolvedWinner, isCurtainCall, true);
                 }
-                if (this.aiMode === 'online' && this.online.role === 'host' && !fromRemoteSync && window.OnlineBridge) {
-                    window.OnlineBridge.broadcastWinner(winner.isP1 ? 'p1' : 'p2', isCurtainCall);
-                }
+            }, 800);
+        }
+        return;
+    }
 
-                this.matchActive = false;
-                this.updateMobileModeUI();
-                audio.playGong();
-                const modal = document.getElementById('victoryModal');
-                modal.classList.remove('hidden');
+    if (this.online._guestEndTimer) {
+        clearTimeout(this.online._guestEndTimer);
+        this.online._guestEndTimer = null;
+    }
 
-                const nextBtn = document.getElementById('btnNextStage');
-                const playerWon = this.aiMode === 'online'
-                    ? (this.online.role === 'host' ? winner.isP1 : !winner.isP1)
-                    : winner.isP1;
+    // Host gửi gói MATCH_END lặp lại 3 lần phòng rớt gói mạng
+    if (this.aiMode === 'online' && this.online.role === 'host' && !fromRemoteSync && window.OnlineBridge) {
+        const winSlot = resolvedWinner.isP1 ? 'p1' : 'p2';
+        window.OnlineBridge.broadcastWinner(winSlot, isCurtainCall);
+        setTimeout(() => window.OnlineBridge.broadcastWinner(winSlot, isCurtainCall), 250);
+        setTimeout(() => window.OnlineBridge.broadcastWinner(winSlot, isCurtainCall), 600);
+    }
 
-                if (this.aiMode !== 'online' && playerWon && this.currentCampaignIdx !== null && this.currentCampaignIdx < BEGINNER_STAGES.length - 1) {
-                    const nextSt = BEGINNER_STAGES[this.currentCampaignIdx + 1];
-                    nextBtn.classList.remove('hidden');
-                    nextBtn.textContent = `⏭️ Qua ${nextSt.title} ➔`;
-                } else {
-                    nextBtn.classList.add('hidden');
-                }
+    this.matchActive = false;
+    this.curtainCallState.active = false;
+    this.updateMobileModeUI();
 
-                document.getElementById('victoryBadge').textContent = isCurtainCall
-                    ? '🔥 TUYỆT KỸ HẠ MÀN HOÀN HẢO 🔥'
-                    : (this.aiMode === 'online' ? '🌐 KẾT QUẢ ĐỐI KHÁNG ONLINE 🌐' : '🥁 TRẬN ĐẤU KẾT THÚC 🥁');
-                document.getElementById('victoryTitle').textContent = `${winner.config.name.toUpperCase()} ĐẮC THẮNG!`;
-                document.getElementById('victorySub').textContent = isCurtainCall
-                    ? `Nghệ nhân sau bức mành tre đã hạ màn kết liễu đối thủ bằng "${winner.config.curtainCallTitle}"`
-                    : (this.aiMode === 'online'
-                        ? (playerWon ? '🎉 Chúc mừng! Bạn đã đánh bại đối thủ trực tuyến!' : '💪 Đối thủ đã giành chiến thắng! Nhấn Đấu Lại để phục thù ngay.')
-                        : (playerWon && this.currentCampaignIdx < BEGINNER_STAGES.length - 1
-                            ? `Chúc mừng bạn đã vượt qua thử thách! Hãy nhấn nút bên dưới để tiến vào màn tiếp theo.`
-                            : `${winner.config.name} (${winner.config.title}) đã làm chủ Thủy Đình!`));
+    try {
+        audio.playGong();
+    } catch (e) {}
+
+    const modal = document.getElementById('victoryModal');
+    if (modal) modal.classList.remove('hidden');
+
+    const nextBtn = document.getElementById('btnNextStage');
+    const playerWon = this.aiMode === 'online'
+        ? (this.online.role === 'host' ? resolvedWinner.isP1 : !resolvedWinner.isP1)
+        : resolvedWinner.isP1;
+
+    if (nextBtn) {
+        if (this.aiMode !== 'online' && playerWon && this.currentCampaignIdx !== null && this.currentCampaignIdx < BEGINNER_STAGES.length - 1) {
+            const nextSt = BEGINNER_STAGES[this.currentCampaignIdx + 1];
+            nextBtn.classList.remove('hidden');
+            nextBtn.textContent = `⏭️ Qua ${nextSt.title} ➔`;
+        } else {
+            nextBtn.classList.add('hidden');
+        }
+    }
+
+    document.getElementById('victoryBadge').textContent = isCurtainCall
+        ? '🔥 TUYỆT KỸ HẠ MÀN HOÀN HẢO 🔥'
+        : (this.aiMode === 'online' ? '🌐 KẾT QUẢ ĐỐI KHÁNG ONLINE 🌐' : '🥁 TRẬN ĐẤU KẾT THÚC 🥁');
+    document.getElementById('victoryTitle').textContent = `${resolvedWinner.config.name.toUpperCase()} ĐẮC THẮNG!`;
+    document.getElementById('victorySub').textContent = isCurtainCall
+        ? `Nghệ nhân sau bức mành tre đã hạ màn kết liễu đối thủ bằng "${resolvedWinner.config.curtainCallTitle}"`
+        : (this.aiMode === 'online'
+            ? (playerWon ? '🎉 Chúc mừng! Bạn đã đánh bại đối thủ trực tuyến!' : '💪 Đối thủ đã giành chiến thắng! Nhấn Đấu Lại để phục thù ngay.')
+            : (playerWon && this.currentCampaignIdx < BEGINNER_STAGES.length - 1
+                ? 'Chúc mừng bạn đã vượt qua thử thách! Hãy nhấn nút bên dưới để tiến vào màn tiếp theo.'
+                : `${resolvedWinner.config.name} (${resolvedWinner.config.title}) đã làm chủ Thủy Đình!`));
+}
             }
 
             /****************************************************************
@@ -3862,8 +3897,10 @@
                                     audio.playWaterSplash(1.2);
                                     this.spawnFloatingText(target.x, target.y - 90, `${w.label || '🌊 SÓNG ĐÁNH!'} -${waveDmg}`, '#38bdf8', 15);
                                 }
-                                if (target.hp <= 0 && w.owner) {
-                                    this.endMatch(w.owner, false);
+                                if (target.hp <= 0) {
+                                    const waveWinner = w.owner || (target.isP1 ? this.p2 : this.p1);
+                                    this.endMatch(waveWinner, false);
+                                }
                                 }
                             }
                         }
@@ -5927,7 +5964,15 @@
             loop() {
                 this.update();
                 this.draw();
-                requestAnimationFrame(() => this.loop());
+                requestAnimationFrame(() => this.loop() {
+    requestAnimationFrame(() => this.loop());
+    try {
+        this.update();
+        this.draw();
+    } catch (err) {
+        console.error('Lỗi trong vòng lặp game:', err);
+    }
+});
             }
         }
 
@@ -6345,29 +6390,7 @@
                 }
             }
 
-            sendRaw(payload) {
-                if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
-                try {
-                    this.ws.send(JSON.stringify(payload));
-                    return true;
-                } catch (err) {
-                    console.error('Lỗi gửi gói tin WebSocket:', err);
-                    return false;
-                }
-            }
-
-            setConnUI(status, text) {
-                const dot = document.getElementById('onlineConnDot');
-                const txt = document.getElementById('onlineConnText');
-                if (txt) txt.textContent = text;
-                if (dot) {
-                    dot.className = status === 'ready'
-                        ? 'inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]'
-                        : (status === 'error'
-                            ? 'inline-block w-2.5 h-2.5 rounded-full bg-red-500'
-                            : 'inline-block w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse');
-                }
-            }
+        
 
             showFeedback(msg, isSuccess = false) {
                 const box = document.getElementById('onlineFeedbackBanner');
